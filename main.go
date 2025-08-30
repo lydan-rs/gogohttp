@@ -27,6 +27,7 @@ func constructLineFromBuf(buf []byte, nBytes int, builder *strings.Builder) int 
 
 func main() {
 	file, err := os.Open("messages.txt")
+	// file, err := os.Open("messages_multi_newline.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,15 +51,16 @@ func main() {
 		lb := constructLineFromBuf(buf, nBytes, &lineBuilder)
 
 		// If a newline is detected, then we need to print, flush, and restart the linebuilder.
-		if lb > -1 {
+		// For loop handles to possibility of multiple newlines in a single chunk.
+		// When subslicing, the Index function will return a value relative to the start of the
+		// subslice, not the base slice. So we need this offset to track where in the original slice
+		// we are working from. Probably a better way to do this but for now its fine.
+		offset := 0
+		for lb > -1 {
 			fmt.Printf("read: %s\n", lineBuilder.String())
 			lineBuilder.Reset()
-			// To start building the next line, we need to start at one position
-			// past the new line character.
-			// TODO: The way we are doing things assumes that in any chunk only one newline will be present.
-			// This works for now, but with other input could easily break. Probably need a loop to
-			// continually recontstruct new lines until there is no newline detected.
-			constructLineFromBuf(buf[lb+1:nBytes], nBytes-(lb+1), &lineBuilder)
+			offset += lb+1
+			lb = constructLineFromBuf(buf[offset:nBytes], nBytes-offset, &lineBuilder)
 		}
 
 	}
