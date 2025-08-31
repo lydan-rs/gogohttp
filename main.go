@@ -9,21 +9,60 @@ import (
 	"strings"
 )
 
-/*
-Appends the contents of the buffer to the line builder.
-Will only append up to the next newline character (if it exists).
-Returns the index of the next newline character, or -1 if none is present.
-*/
-func constructLineFromBuf(buf []byte, nBytes int, builder *strings.Builder) int {
-	linebreak := slices.Index(buf, '\n')
-	if linebreak > -1 {
-		builder.Write(buf[:linebreak])
-	} else {
-		builder.Write(buf[:nBytes])
-	}
+// <-chan is a receive only channel, meaning that data can only be pulled from it.
+// The opposite would be a send only channel, chan<-
+func getLinesChannel(f io.ReadCloser) <-chan string {
+	ch := make(chan string)
 
-	return linebreak
+	go func() { 
+		// Line Processing
+		buf := make([]byte, 8)
+		var lineBuilder strings.Builder
+
+		for {
+			nBytes, err := f.Read(buf)
+
+			if err == io.EOF {
+				break
+			}
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+
+			// If a newline is detected, then we need to print, flush, and restart the linebuilder.
+			// For loop handles to possibility of multiple newlines in a single chunk.
+			// When subslicing, the Index function will return a value relative to the start of the
+			// subslice, not the base slice. So we need this offset to track where in the original slice
+			// we are working from. Probably a better way to do this but for now its fine.
+			offset := 0
+			for {
+				newlineIndex := slices.Index(buf[offset:nBytes], '\n')
+
+				if newlineIndex > -1 {
+					lineBuilder.Write(buf[offset:offset+newlineIndex])
+					ch <- lineBuilder.String()
+					lineBuilder.Reset()
+					offset += newlineIndex+1
+				} else {
+					lineBuilder.Write(buf[offset:nBytes])
+					break
+				}
+			}
+		}
+
+		if lineBuilder.Len() > 0 {
+			ch <- lineBuilder.String()
+		}
+
+		close(ch)
+
+	} ()
+
+	return ch
 }
+
 
 func main() {
 	file, err := os.Open("messages.txt")
@@ -34,38 +73,10 @@ func main() {
 
 	defer file.Close()
 
-	buf := make([]byte, 8)
-	var lineBuilder strings.Builder
-
-	for {
-		nBytes, err := file.Read(buf)
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		lb := constructLineFromBuf(buf, nBytes, &lineBuilder)
-
-		// If a newline is detected, then we need to print, flush, and restart the linebuilder.
-		// For loop handles to possibility of multiple newlines in a single chunk.
-		// When subslicing, the Index function will return a value relative to the start of the
-		// subslice, not the base slice. So we need this offset to track where in the original slice
-		// we are working from. Probably a better way to do this but for now its fine.
-		offset := 0
-		for lb > -1 {
-			fmt.Printf("read: %s\n", lineBuilder.String())
-			lineBuilder.Reset()
-			offset += lb+1
-			lb = constructLineFromBuf(buf[offset:nBytes], nBytes-offset, &lineBuilder)
-		}
-
+	lineCH := getLinesChannel(file)
+	// I think `range` ends when the channel is closed. Otherwise I have no idea why this works.
+	for line := range lineCH {
+		fmt.Printf("read: %s\n", line)
 	}
 
-	if lineBuilder.Len() > 0 {
-		fmt.Printf("read: %s\n", lineBuilder.String())
-	}
 }
