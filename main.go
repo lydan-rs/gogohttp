@@ -1,7 +1,7 @@
 package main
 
 import (
-	"os"
+	"net"
 	"log"
 	"io"
 	"fmt"
@@ -57,6 +57,8 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 		}
 
 		close(ch)
+		f.Close()
+		fmt.Println("Finished reading from connection. Closing connection and channel.")
 
 	} ()
 
@@ -65,18 +67,27 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 
 
 func main() {
-	file, err := os.Open("messages.txt")
-	// file, err := os.Open("messages_multi_newline.txt")
-	if err != nil {
-		log.Fatal(err)
+	listener, err := net.Listen("tcp", "localhost:42069")
+	fmt.Printf("TCP Listener started at %s.\n", listener.Addr())
+
+	if err != nil { log.Fatal(err) }
+	defer listener.Close()
+
+	for {
+		conn, err := listener.Accept()
+
+		if err != nil { log.Fatal(err) }
+
+		if addr := conn.RemoteAddr(); addr != nil{
+			fmt.Printf("Connection Accepted from %s.\n", addr.String())
+		} else {
+			fmt.Printf("Connection Accepted from unkown source.\n")
+		}
+
+		lineCH := getLinesChannel(conn)
+		// I think `range` ends when the channel is closed. Otherwise I have no idea why this works.
+		for line := range lineCH {
+			fmt.Printf("%s\n", line)
+		}
 	}
-
-	defer file.Close()
-
-	lineCH := getLinesChannel(file)
-	// I think `range` ends when the channel is closed. Otherwise I have no idea why this works.
-	for line := range lineCH {
-		fmt.Printf("read: %s\n", line)
-	}
-
 }
