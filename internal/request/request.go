@@ -1,11 +1,12 @@
 package request
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
-	"errors"
 	"unicode"
-	"fmt"
 )
 
 type Request struct {
@@ -63,13 +64,48 @@ func parseRequestLine(line string) (*RequestLine, error) {
 }
 
 
-
-// TODO: Reading message data and converting to lines - Do Better.
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	buf, err := io.ReadAll(reader)
-	if err != nil { return nil, err }
+	buffer := make([]byte, 0, 1024)
+	chunk := make([]byte, 8)
+	lines := make([]string, 0, 16)
+	
+	// TODO: Consider a version of this that allows you to parse a line as soon as it has been created.
+	for {
+		nRead, readErr := reader.Read(chunk)
+		buffer = append(buffer, chunk[:nRead]...)
 
-	lines := strings.Split(string(buf), CRLF)
+		if nRead != 0 {
+			/*
+			If bytes were read, extract lines seperated by CRLF, until there are none.
+			Copying the unprocessed bytes to the begining of the slice may not be the most efficient thing.
+			But with how this loop works, you'll only be copying a max of len(chunk)-1 bytes each time.
+			So for now its probably fine. Might want to check out in the future though. 
+			*/
+			// TODO: Optimise by restricting the range to search for the CRLF to the bytes just read in, minus 1.
+			/*
+			Its possible that a CRLF gets split between two chunks. So to gurrantee that one is found, we would need
+			to include the last byte appended before the current chunk in the search range to gurrantee an accurate find.
+			*/
+			for index := bytes.Index(buffer, []byte(CRLF)); index >= 0; {
+				lines = append(lines, string(buffer[:index]))
+				copy(buffer, buffer[index+2:])
+				buffer = buffer[:len(buffer)-(index+2)]
+				index = bytes.Index(buffer, []byte(CRLF))
+			}
+		}
+
+		// HTTP messages don't necessarily end with a CRLF, so we need to make sure to grab all the remainging data on EOF.
+		if readErr == io.EOF {
+			lines = append(lines, string(buffer))
+			break
+		}
+
+		if readErr != nil {
+			return nil, readErr
+		}
+	}
+
+
 	if len(lines) == 0 {
 		return nil, errors.New("Message was empty.")
 	}
