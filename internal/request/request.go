@@ -2,7 +2,6 @@ package request
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -42,10 +41,17 @@ func makeRequest() Request {
 }
 
 // TODO: Read up on RFCs to get a better idea of how to do this.
-func parseRequestLine(line string) (*RequestLine, error) {
-	parts := strings.Split(line, " ")
+func parseRequestLine(data []byte) (*RequestLine, int, error) {
+	crlfIndex := bytes.Index(data, []byte(crlf))
+	if crlfIndex < 0 {
+		return nil, 0, nil
+	}
+
+	parts := strings.Split(string(data[:crlfIndex]), " ")
+	bytesParsed := crlfIndex + 2
+
 	if nParts := len(parts); nParts != 3 {
-		return nil, fmt.Errorf("Invalid Request Line. Contains %v parts, expected 3", nParts)
+		return nil, bytesParsed, fmt.Errorf("Invalid Request Line. Contains %v parts, expected 3", nParts)
 	}
 
 	method := parts[0]
@@ -55,7 +61,7 @@ func parseRequestLine(line string) (*RequestLine, error) {
 	// Method
 	for _, r := range method {
 		if !unicode.IsUpper(r) || !unicode.IsLetter(r) {
-			return nil, fmt.Errorf("Invalid HTTP Method: %v", method)
+			return nil, bytesParsed, fmt.Errorf("Invalid HTTP Method: %v", method)
 		}
 	}
 
@@ -64,40 +70,45 @@ func parseRequestLine(line string) (*RequestLine, error) {
 
 	// HTTP Version
 	if version != "HTTP/1.1" {
-		return nil, fmt.Errorf("Invalid HTTP Version: %v", version)
+		return nil, bytesParsed, fmt.Errorf("Invalid HTTP Version: %v", version)
 	}
 
 	return &RequestLine{
 		Method:        method,
 		RequestTarget: resourcePath,
 		HttpVersion:   "1.1",
-	}, nil
+	}, bytesParsed, nil
 
 }
 
-func (r *Request) parse(line string) error {
+func (r *Request) parse(data []byte) (int, error) {
+	bytesConsumed := 0
 
-	switch r.state {
-	case initialised:
-		requestLine, err := parseRequestLine(line)
-		if err != nil {
-			return err
+	for r.state != done {
+		switch r.state {
+		case initialised:
+			requestLine, bytesParsed, err := parseRequestLine(data)
+			if err != nil || bytesParsed == 0 {
+				return 0, err
+			}
+			fmt.Printf("RequestLine: %v\n", requestLine)
+			r.RequestLine = *requestLine
+			bytesConsumed += bytesParsed
+			r.state = done
 		}
-		r.RequestLine = *requestLine
-		r.state = done
 	}
 
-	return nil
+	return bytesConsumed, nil
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, 0, 1024)
 	chunk := make([]byte, 8)
-	lines := make([]string, 0, 16)
 	nChunks := 0
 
-	// TODO: Consider a version of this that allows you to parse a line as soon as it has been created.
-	for {
+	request := makeRequest()
+
+	for request.state != done {
 		nChunks += 1
 		fmt.Printf("Reading chunk %v from message.\n", nChunks)
 		nRead, readErr := reader.Read(chunk)
@@ -107,55 +118,22 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		fmt.Println()
 
 		if nRead != 0 {
-			/*
-				If bytes were read, extract lines seperated by CRLF, until there are none.
-				Copying the unprocessed bytes to the begining of the slice may not be the most efficient thing.
-				But with how this loop works, you'll only be copying a max of len(chunk)-1 bytes each time.
-				So for now its probably fine. Might want to check out in the future though.
-			*/
-			// TODO: Optimise by restricting the range to search for the CRLF to the bytes just read in, minus 1.
-			/*
-				Its possible that a CRLF gets split between two chunks. So to gurrantee that one is found, we would need
-				to include the last byte appended before the current chunk in the search range to gurrantee an accurate find.
-			*/
-			for index := bytes.Index(buffer, []byte(crlf)); index >= 0; {
-				lines = append(lines, string(buffer[:index]))
-				copy(buffer, buffer[index+2:])
-				buffer = buffer[:len(buffer)-(index+2)]
-				index = bytes.Index(buffer, []byte(crlf))
+			bytesConsumed, err := request.parse(buffer)
+			if err != nil {
+				return nil, err
 			}
-		}
-
-		// HTTP messages don't necessarily end with a CRLF, so we need to make sure to grab all the remainging data on EOF.
-		if readErr == io.EOF {
-			lines = append(lines, string(buffer))
-			fmt.Println("End Of File reached.")
-			break
+			copy(buffer, buffer[bytesConsumed:])
+			buffer = buffer[:len(buffer)-bytesConsumed]
 		}
 
 		if readErr != nil {
-			return nil, readErr
+			if readErr == io.EOF {
+				return nil, fmt.Errorf("Connection to ended prematurely.")
+			} else {
+				return nil, fmt.Errorf("Unexpected Error Expeirenced: %v.", readErr)
+			}
 		}
 	}
-
-	fmt.Println("Connection Read Finished.")
-
-	if len(lines) == 0 {
-		return nil, errors.New("Message was empty.")
-	}
-
-	request := makeRequest()
-	for lIdx := range lines {
-		fmt.Println(lines[lIdx])
-		err := request.parse(lines[lIdx])
-		if err != nil {
-			return nil, err
-		}
-	}
-	// requestLine, err := parseRequestLine(lines[0])
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	return &request, nil
 

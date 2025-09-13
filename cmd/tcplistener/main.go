@@ -28,13 +28,17 @@ func main() {
 		}
 
 		request, err := request.RequestFromReader(conn)
-		fmt.Println("Finished Reading Request.")
 		if err != nil { log.Fatal(err) }
+		fmt.Println("Finished Reading Request.")
 
-		fmt.Printf("Request line:\n- Method: %v\n- Target: %v\n- Version: %v\n",
+		response := fmt.Sprintf("Request line:\n- Method: %v\n- Target: %v\n- Version: %v\n",
 			request.RequestLine.Method,
 			request.RequestLine.RequestTarget,
 			request.RequestLine.HttpVersion,
 		)
+
+		fmt.Printf("Response >>\n%v\n", response)
+		conn.Write([]byte(response))
+		fmt.Println("Response sent.")
 	}
 }
