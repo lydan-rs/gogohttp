@@ -11,15 +11,15 @@ func TestRequestFromReader(t *testing.T) {
 
 	goodRequests := []struct {
 		inRequest string
-		expectedParsed Request
+		expectedParsed RequestLine
 	}{
 		{
 			inRequest: "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 
-			expectedParsed: Request{RequestLine: RequestLine{Method: "GET", RequestTarget: "/", HttpVersion: "1.1"}},
+			expectedParsed: RequestLine{Method: "GET", RequestTarget: "/", HttpVersion: "1.1"},
 		},
 		{
 			inRequest: "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 
-			expectedParsed: Request{RequestLine: RequestLine{Method: "GET", RequestTarget: "/coffee", HttpVersion: "1.1"}},
+			expectedParsed: RequestLine{Method: "GET", RequestTarget: "/coffee", HttpVersion: "1.1"},
 		},
 	}
 
@@ -42,7 +42,7 @@ func TestRequestFromReader(t *testing.T) {
 		r, err := RequestFromReader(strings.NewReader(*request))
 		require.NoError(t, err)
 		require.NotNil(t, r)
-		assert.Equal(t, expectedParsed, r)
+		assert.Equal(t, expectedParsed, &r.RequestLine)
 		// assert.Equal(t, expectedParsed.RequestLine.Method, r.RequestLine.Method)
 		// assert.Equal(t, expectedParsed.RequestLine.RequestTarget, r.RequestLine.RequestTarget)
 		// assert.Equal(t, expectedParsed.RequestLine.HttpVersion, r.RequestLine.HttpVersion)

@@ -3,67 +3,10 @@ package main
 import (
 	"net"
 	"log"
-	"io"
 	"fmt"
-	"slices"
-	"strings"
+	"http-protocol/internal/request"
 )
 
-// <-chan is a receive only channel, meaning that data can only be pulled from it.
-// The opposite would be a send only channel, chan<-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	ch := make(chan string)
-
-	go func() { 
-		// Line Processing
-		buf := make([]byte, 8)
-		var lineBuilder strings.Builder
-
-		for {
-			nBytes, err := f.Read(buf)
-
-			if err == io.EOF {
-				break
-			}
-
-			if err != nil {
-				log.Fatal(err)
-			}
-
-
-			// If a newline is detected, then we need to print, flush, and restart the linebuilder.
-			// For loop handles to possibility of multiple newlines in a single chunk.
-			// When subslicing, the Index function will return a value relative to the start of the
-			// subslice, not the base slice. So we need this offset to track where in the original slice
-			// we are working from. Probably a better way to do this but for now its fine.
-			offset := 0
-			for {
-				newlineIndex := slices.Index(buf[offset:nBytes], '\n')
-
-				if newlineIndex > -1 {
-					lineBuilder.Write(buf[offset:offset+newlineIndex])
-					ch <- lineBuilder.String()
-					lineBuilder.Reset()
-					offset += newlineIndex+1
-				} else {
-					lineBuilder.Write(buf[offset:nBytes])
-					break
-				}
-			}
-		}
-
-		if lineBuilder.Len() > 0 {
-			ch <- lineBuilder.String()
-		}
-
-		close(ch)
-		f.Close()
-		fmt.Println("Finished reading from connection. Closing connection and channel.")
-
-	} ()
-
-	return ch
-}
 
 
 func main() {
@@ -84,10 +27,14 @@ func main() {
 			fmt.Printf("Connection Accepted from unkown source.\n")
 		}
 
-		lineCH := getLinesChannel(conn)
-		// I think `range` ends when the channel is closed. Otherwise I have no idea why this works.
-		for line := range lineCH {
-			fmt.Printf("%s\n", line)
-		}
+		request, err := request.RequestFromReader(conn)
+		fmt.Println("Finished Reading Request.")
+		if err != nil { log.Fatal(err) }
+
+		fmt.Printf("Request line:\n- Method: %v\n- Target: %v\n- Version: %v\n",
+			request.RequestLine.Method,
+			request.RequestLine.RequestTarget,
+			request.RequestLine.HttpVersion,
+		)
 	}
 }
