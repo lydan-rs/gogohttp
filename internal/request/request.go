@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"unicode"
+	"http-protocol/internal/headers"
 )
 
 const crlf string = "\r\n"
@@ -14,6 +15,8 @@ type parsingState int
 
 const (
 	initialised = iota
+	parsing_request_line
+	parsing_headers
 	done
 )
 
@@ -25,12 +28,14 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
+	HeaderLines headers.Headers
 	state       parsingState
 }
 
 
 func makeRequest() Request {
 	r := Request{}
+	r.HeaderLines = headers.MakeHeadersMap()
 	r.state = initialised
 	return r
 }
@@ -92,14 +97,25 @@ func (r *Request) parse(data []byte) (int, error) {
 	for r.state != done {
 		switch r.state {
 		case initialised:
-			requestLine, bytesParsed, err := parseRequestLine(data)
+			r.state = parsing_request_line
+
+		case parsing_request_line:
+			requestLine, bytesParsed, err := parseRequestLine(data[bytesConsumed:])
 			if err != nil || bytesParsed == 0 {
-				return 0, err
+				return bytesConsumed, err
 			}
 			fmt.Printf("RequestLine: %v\n", requestLine)
 			r.RequestLine = *requestLine
 			bytesConsumed += bytesParsed
-			r.state = done
+			r.state = parsing_headers
+
+		case parsing_headers:
+			bytesParsed, finished, err := r.HeaderLines.Parse(data[bytesConsumed:])
+			if err != nil || bytesParsed == 0 {
+				return bytesConsumed, err
+			}
+			bytesConsumed += bytesParsed
+			if finished {	r.state = done }
 		}
 	}
 
