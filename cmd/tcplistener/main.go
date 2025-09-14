@@ -31,14 +31,15 @@ func main() {
 		if err != nil { log.Fatal(err) }
 		fmt.Println("Finished Reading Request.")
 
-		response := fmt.Sprintf("Request line:\n- Method: %v\n- Target: %v\n- Version: %v\n",
+		fmt.Printf("Request line:\n- Method: %v\n- Target: %v\n- Version: %v\n",
 			request.RequestLine.Method,
 			request.RequestLine.RequestTarget,
 			request.RequestLine.HttpVersion,
 		)
-
-		fmt.Printf("Response >>\n%v\n", response)
-		conn.Write([]byte(response))
-		fmt.Println("Response sent.")
+		fmt.Println("Headers:")
+		for key := range request.HeaderLines {
+			fmt.Printf("- %v: %v\n", key, request.HeaderLines[key])
+		}
+		
 	}
 }
