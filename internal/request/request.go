@@ -28,17 +28,19 @@ type Request struct {
 	state       parsingState
 }
 
-/*
-HTTP-NAME: [prefix]HTTP
-HTTP-VER: [HTTP-NAME]/[major digit].[minor digit]
-REQUEST-LINE: [method] [resouce path] [HTTP-VER]
-*/
 
 func makeRequest() Request {
 	r := Request{}
 	r.state = initialised
 	return r
 }
+
+
+/*
+HTTP-NAME: [prefix]HTTP
+HTTP-VER: [HTTP-NAME]/[major digit].[minor digit]
+REQUEST-LINE: [method] [resouce path] [HTTP-VER]
+*/
 
 // TODO: Read up on RFCs to get a better idea of how to do this.
 func parseRequestLine(data []byte) (*RequestLine, int, error) {
@@ -80,6 +82,9 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 	}, bytesParsed, nil
 
 }
+
+
+
 
 func (r *Request) parse(data []byte) (int, error) {
 	bytesConsumed := 0
