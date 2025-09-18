@@ -3,10 +3,11 @@ package request
 import (
 	"bytes"
 	"fmt"
+	"http-protocol/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
-	"http-protocol/internal/headers"
 )
 
 const crlf string = "\r\n"
@@ -17,6 +18,7 @@ const (
 	initialised = iota
 	parsing_request_line
 	parsing_headers
+	parsing_body
 	done
 )
 
@@ -29,9 +31,9 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	HeaderLines headers.Headers
+	Body        []byte
 	state       parsingState
 }
-
 
 func makeRequest() Request {
 	r := Request{}
@@ -39,7 +41,6 @@ func makeRequest() Request {
 	r.state = initialised
 	return r
 }
-
 
 /*
 HTTP-NAME: [prefix]HTTP
@@ -88,9 +89,6 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 
 }
 
-
-
-
 func (r *Request) parse(data []byte) (int, error) {
 	bytesConsumed := 0
 
@@ -115,7 +113,30 @@ func (r *Request) parse(data []byte) (int, error) {
 				return bytesConsumed, err
 			}
 			bytesConsumed += bytesParsed
-			if finished {	r.state = done }
+			if finished {
+				r.state = parsing_body
+			}
+
+		case parsing_body:
+			if !r.HeaderLines.Exists("content-length") {
+				r.state = done
+				break
+			}
+
+			contentLength, err := strconv.Atoi(r.HeaderLines["content-length"])
+			if err != nil || contentLength < 0 {
+				fmt.Printf("Err: %v\n", err.Error())
+				return bytesConsumed, fmt.Errorf("Invalid 'content-length' value. Must be an integer greater than or equal to 0.")
+			}
+			
+			if len(data[bytesConsumed:]) >= contentLength {
+				r.Body = make([]byte, contentLength)
+				copy(r.Body, data[bytesConsumed:bytesConsumed+contentLength])
+				bytesConsumed += contentLength
+				r.state = done
+			} else {
+				return bytesConsumed, nil
+			}
 		}
 	}
 

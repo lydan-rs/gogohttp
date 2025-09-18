@@ -13,6 +13,16 @@ const crlf = "\r\n"
 
 type Headers map[string]string
 
+func (h Headers) Exists(name string) (bool) {
+	_, exists := h[name]
+	return exists
+}
+
+func (h Headers) Get(name string) (value string, exists bool) {
+	value, exists = h[name]
+	return
+}
+
 func MakeHeadersMap() Headers {
 	return Headers{}
 }
