@@ -51,6 +51,7 @@ REQUEST-LINE: [method] [resouce path] [HTTP-VER]
 var r_method, r_method_err = regexp.Compile("GET|PUT|POST|DELETE")
 
 // TODO: Read up on RFCs to get a better idea of how to do this.
+// TODO: Handle nil arguements
 func parseRequestLine(data []byte) (*RequestLine, int, error) {
 	crlfIndex := bytes.Index(data, []byte(crlf))
 	if crlfIndex < 0 {
@@ -89,6 +90,36 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 
 }
 
+// TODO: Handle nil arguements
+func parseBody(data []byte, headers headers.Headers) (body []byte, bytesParsed int, done bool, err error) {
+	body = nil
+	bytesParsed = 0
+	err = nil
+	done = false
+
+	if !headers.Exists("content-length") {
+		done = true
+		return
+	}
+
+	contentLength, err := strconv.Atoi(headers["content-length"])
+
+	if err != nil || contentLength < 0 {
+		err = fmt.Errorf("Invalid 'content-length' value. Must be an integer greater than or equal to 0.")
+		return
+	}
+
+	if len(data) >= contentLength {
+		body = make([]byte, contentLength)
+		copy(body, data[:contentLength])
+		bytesParsed += contentLength
+		done = true
+	} 
+	
+	return
+}
+
+// TODO: Handle nil arguements
 func (r *Request) parse(data []byte) (int, error) {
 	bytesConsumed := 0
 
@@ -118,21 +149,15 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 
 		case parsing_body:
-			if !r.HeaderLines.Exists("content-length") {
-				r.state = done
-				break
+			body, bytesParsed, parsed, err := parseBody(data[bytesConsumed:], r.HeaderLines)
+			
+			if err != nil {
+				return bytesConsumed, err
 			}
-
-			contentLength, err := strconv.Atoi(r.HeaderLines["content-length"])
-			if err != nil || contentLength < 0 {
-				fmt.Printf("Err: %v\n", err.Error())
-				return bytesConsumed, fmt.Errorf("Invalid 'content-length' value. Must be an integer greater than or equal to 0.")
-			}
-
-			if len(data[bytesConsumed:]) >= contentLength {
-				r.Body = make([]byte, contentLength)
-				copy(r.Body, data[bytesConsumed:bytesConsumed+contentLength])
-				bytesConsumed += contentLength
+			
+			if parsed {
+				bytesParsed += bytesParsed
+				r.Body = body
 				r.state = done
 			} else {
 				return bytesConsumed, nil
@@ -143,6 +168,7 @@ func (r *Request) parse(data []byte) (int, error) {
 	return bytesConsumed, nil
 }
 
+// TODO: Handle nil arguements
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buffer := make([]byte, 0, 1024)
 	chunk := make([]byte, 8)

@@ -2,12 +2,16 @@ package request
 
 import (
 	"fmt"
+	"http-protocol/internal/headers"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TODO: Include tests for nil values.
 
 func testGoodRequestLines(t *testing.T) {
 	tests := []struct {
@@ -215,6 +219,113 @@ func TestParseRequestLine(t *testing.T) {
 	testGoodRequestLines(t)
 	testIncompleteRequestLines(t)
 	testBadRequestLines(t)
+}
+
+// ---- SECTION: parseBody ----
+
+func TestParseBody(t *testing.T) {
+	failureMsg := func(desc string) string { return fmt.Sprintf("Description: %v\n", desc) }
+	
+
+	desc := "Content length matches content-length. Expect body containing \"Hello There!\\n\"."
+	content := "Hello There!\n"
+	header := headers.Headers{
+		"content-length": strconv.Itoa(len(content)),
+	}
+	body, numBytesParsed, finished, err := parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.NotNil(t, body, failureMsg(desc))
+	assert.Equal(t, content, string(body), failureMsg(desc))
+	assert.Equal(t, len(content), numBytesParsed, failureMsg(desc))
+	assert.True(t, finished, failureMsg(desc))
+
+
+	desc = "Content length exceeds content-length. Expect body containing \"Hello There!\\n\"."
+	content = "Hello There!\n General Kenobi!\n"
+	target := "Hello There!\n"
+	header = headers.Headers{
+		"content-length": strconv.Itoa(len(target)),
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.NotNil(t, body, failureMsg(desc))
+	assert.Equal(t, target, string(body), failureMsg(desc))
+	assert.Equal(t, len(target), numBytesParsed, failureMsg(desc))
+	assert.True(t, finished, failureMsg(desc))
+
+
+	desc = "Content length does not meet content-length. Expect nil body and no errors."
+	content = "Hello The"
+	target = "Hello There!\n"
+	header = headers.Headers{
+		"content-length": strconv.Itoa(len(target)),
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	assert.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	assert.False(t, finished, failureMsg(desc))
+
+
+	desc = "Content empty. Expect nil body and no errors."
+	content = ""
+	target = "Hello There!\n"
+	header = headers.Headers{
+		"content-length": strconv.Itoa(len(target)),
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	assert.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	assert.False(t, finished, failureMsg(desc))
+
+
+	desc = "No content-length header. Expect nil body, finished and no errors."
+	content = ""
+	header = headers.Headers{
+		"some-name": "some-value",
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	assert.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	assert.True(t, finished, failureMsg(desc))
+
+
+	desc = "Body content and no content-length header. Expect nil body, finished and no errors."
+	content = "Some body content I guess."
+	header = headers.Headers{
+		"some-name": "some-value",
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.NoError(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	assert.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	assert.True(t, finished, failureMsg(desc))
+
+
+	desc = "content-length value is a string. Expect error."
+	content = "Some body content I guess."
+	header = headers.Headers{
+		"content-length": "some-value",
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.Error(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	require.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	require.False(t, finished, failureMsg(desc))
+
+
+	desc = "content-length value is negative. Expect Errors"
+	content = "Some body content I guess."
+	header = headers.Headers{
+		"content-length": "-3",
+	}
+	body, numBytesParsed, finished, err = parseBody([]byte(content), header)
+	require.Error(t, err, failureMsg(desc))
+	require.Nil(t, body, failureMsg(desc))
+	require.Equal(t, 0, numBytesParsed, failureMsg(desc))
+	require.False(t, finished, failureMsg(desc))
 }
 
 // ---- SECTION: Request From Reader ----

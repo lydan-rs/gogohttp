@@ -47,6 +47,8 @@ var field_line_regex, regex_err = regexp.Compile(r_field_line)
 FIELD-LINE: [field-name]:<\s*>[field-value]<\s*>
 */
 
+
+// TODO: Handle nil arguements
 func (h Headers) Parse(data []byte) (bytesParsed int, done bool, err error) {
 	bytesParsed = 0
 	done = false
