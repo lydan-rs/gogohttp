@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"http-protocol/internal/headers"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 const crlf string = "\r\n"
@@ -48,6 +48,8 @@ HTTP-VER: [HTTP-NAME]/[major digit].[minor digit]
 REQUEST-LINE: [method] [resouce path] [HTTP-VER]
 */
 
+var r_method, r_method_err = regexp.Compile("GET|PUT|POST|DELETE")
+
 // TODO: Read up on RFCs to get a better idea of how to do this.
 func parseRequestLine(data []byte) (*RequestLine, int, error) {
 	crlfIndex := bytes.Index(data, []byte(crlf))
@@ -67,10 +69,8 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 	version := parts[2]
 
 	// Method
-	for _, r := range method {
-		if !unicode.IsUpper(r) || !unicode.IsLetter(r) {
-			return nil, bytesParsed, fmt.Errorf("Invalid HTTP Method: %v", method)
-		}
+	if !r_method.Match([]byte(method)) {
+		return nil, bytesParsed, fmt.Errorf("Invalid HTTP Method: %v", method)
 	}
 
 	// Resource Path
@@ -128,7 +128,7 @@ func (r *Request) parse(data []byte) (int, error) {
 				fmt.Printf("Err: %v\n", err.Error())
 				return bytesConsumed, fmt.Errorf("Invalid 'content-length' value. Must be an integer greater than or equal to 0.")
 			}
-			
+
 			if len(data[bytesConsumed:]) >= contentLength {
 				r.Body = make([]byte, contentLength)
 				copy(r.Body, data[bytesConsumed:bytesConsumed+contentLength])
