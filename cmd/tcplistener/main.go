@@ -41,5 +41,7 @@ func main() {
 			fmt.Printf("- %v: %v\n", key, request.HeaderLines[key])
 		}
 		
+		fmt.Println("Body:")
+		fmt.Printf("%v\n", string(request.Body))
 	}
 }
