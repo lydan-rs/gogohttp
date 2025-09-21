@@ -13,6 +13,20 @@ const crlf = "\r\n"
 
 type Headers map[string]string
 
+func (h Headers) Set(name string, value string) {
+	h[name] = value
+}
+
+func (h Headers) Add(name string, value string) {
+	if !h.Exists(name) {
+		h.Set(name, value)
+	} else {
+		cur := h[name]
+		out := cur + ", " + value
+		h[name] = out
+	}
+}
+
 func (h Headers) Exists(name string) (bool) {
 	_, exists := h[name]
 	return exists
