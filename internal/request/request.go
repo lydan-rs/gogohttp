@@ -176,14 +176,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	request := makeRequest()
 
+
 	for request.state != done {
 		nChunks += 1
-		fmt.Printf("Reading chunk %v from message.\n", nChunks)
 		nRead, readErr := reader.Read(chunk)
-		fmt.Printf("%v bytes read from connection.\n", nRead)
 		buffer = append(buffer, chunk[:nRead]...)
-		fmt.Println("Bytes appended to buffer.")
-		fmt.Println()
 
 		if nRead != 0 {
 			bytesConsumed, err := request.parse(buffer)
@@ -195,10 +192,10 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 
 		if readErr != nil {
-			if readErr == io.EOF {
-				return nil, fmt.Errorf("Connection to ended prematurely.")
+			if readErr == io.EOF && request.state == done{
+				return &request, readErr
 			} else {
-				return nil, fmt.Errorf("Unexpected Error Expeirenced: %v.", readErr)
+				return nil, readErr
 			}
 		}
 	}
