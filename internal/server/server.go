@@ -2,6 +2,9 @@ package server
 
 import (
 	"fmt"
+	"http-protocol/internal/request"
+	"http-protocol/internal/response"
+	"io"
 	"log"
 	"net"
 	"sync/atomic"
@@ -9,13 +12,16 @@ import (
 
 const crlf = "\r\n"
 
+type Handler func(w response.Writer, req *request.Request)
+
 type Server struct {
 	tcpListener net.Listener
 	connections []net.Conn
+	handler Handler
 	open atomic.Bool
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	tcpListener, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
 	if err != nil { return nil, err }
 
@@ -24,6 +30,7 @@ func Serve(port int) (*Server, error) {
 	server := Server{
 		tcpListener: tcpListener,
 		connections: connections,
+		handler: handler,
 	}
 	server.open.Store(true)
 
@@ -56,16 +63,23 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
-	n, err := conn.Write([]byte(
-		"HTTP/1.1 200 OK" + crlf +
-		"Content-Type: text/plain" + crlf +
-		"Content-Length: 13" + crlf +
-		crlf +
-		"Hello World!\n"))
 
-	if err != nil {
-		log.Fatal(err)
-	} else {
-		log.Printf("%v bytes written to %v from server %v.\n", n, conn.RemoteAddr().String(), s.tcpListener.Addr().String())
+	for {
+		request, err := request.RequestFromReader(conn)
+		writer := response.MakeWriter(conn)
+		if request != nil {
+			s.handler(writer, request)
+			log.Printf("Response to %v sent.\nRequest: %v\n", conn.RemoteAddr().String(), request)
+		}
+		
+
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("%v has terminated connection.\n\n", conn.RemoteAddr().String())
+			} else {
+				log.Printf("---- ERROR ----\n>> Client: %v\n>> Error: %v\n\n", conn.RemoteAddr().String(), err.Error())
+			}
+			break
+		}
 	}
 }
