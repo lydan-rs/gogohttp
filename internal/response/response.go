@@ -3,6 +3,7 @@ package response
 import (
 	"fmt"
 	"http-protocol/internal/headers"
+	"io"
 	"net"
 	"strconv"
 )
@@ -112,6 +113,60 @@ func (w *Writer) WriteHTML(body []byte) (int, error) {
 
 	n, err := w.connection.Write(body)
 	
+	w.status = wS_BODY
+	return n, err
+}
+
+func writeChunks(w io.Writer, p []byte, maxChunkSize uint) (int, error) {
+	total := 0
+	for i := 0; i < len(p); {
+		chunkSize := min(int(maxChunkSize), len(p)-i)
+		line := fmt.Sprintf("%x\r\n%s\r\n", chunkSize, p[i:i+chunkSize])
+		n, err := w.Write([]byte(line))
+		i += chunkSize
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+
+	return total, nil
+}
+
+func GetChunkHeaders(contentType string) headers.Headers {
+	h := headers.MakeHeadersMap()
+	h.Set("Content-Type", contentType)
+	h.Set("Transfer-Encoding", "chunked")
+	return h
+}
+
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.status != wS_HEADERS {
+		w.WriteHeaders(GetChunkHeaders("text/plain"))
+		w.status = wS_HEADERS
+	}
+
+	total := 0
+	for total < len(p) {
+		n, err := writeChunks(w.connection, p, 32)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+
+	return total, nil
+}
+
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.status != wS_HEADERS {
+		w.WriteHeaders(GetChunkHeaders("text/plain"))
+		w.status = wS_HEADERS
+	}
+
+	n, err := w.connection.Write([]byte("0\r\n\r\n"))
 	w.status = wS_BODY
 	return n, err
 }

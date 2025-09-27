@@ -5,8 +5,10 @@ import (
 	"http-protocol/internal/response"
 	"http-protocol/internal/server"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -59,14 +61,39 @@ func MainHandler(w response.Writer, req *request.Request) {
 		return
 	}
 
-	switch req.RequestLine.RequestTarget {
-	case "/yourproblem":
+	target := req.RequestLine.RequestTarget
+	switch {
+	case strings.HasPrefix(target, "/yourproblem"):
 		w.WriteStatusLine(response.SC_BAD_REQUEST)
 		w.WriteHTML([]byte(BAD_REQUEST))
 
-	case "/myproblem":
+	case strings.HasPrefix(target, "/myproblem"):
 		w.WriteStatusLine(response.SC_INTERNAL_SERVER_ERROR)
 		w.WriteHTML([]byte(SERVER_ERROR))
+
+	case strings.HasPrefix(target, "/httpbin"):
+		externalTarget := "https://httpbin.org" + strings.TrimPrefix(target, "/httpbin")
+		r, err := http.Get(externalTarget)
+		if err != nil {
+			log.Print(err)
+			w.WriteStatusLine(response.SC_INTERNAL_SERVER_ERROR)
+			w.WriteHTML([]byte(SERVER_ERROR))
+			return
+		}
+
+		w.WriteStatusLine(response.SC_OK)
+		h := response.GetChunkHeaders("")
+		// h.Set("content-type", r.Header.Get("content-type"))
+		w.WriteHeaders(h)
+		buf := make([]byte, 1024)
+		for {
+			n, err := r.Body.Read(buf)
+			w.WriteChunkedBody(buf[:n])
+			if err != nil {
+				break;
+			}
+		}
+		w.WriteChunkedBodyDone()
 
 	default:
 		w.WriteStatusLine(response.SC_OK)
