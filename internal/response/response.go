@@ -37,6 +37,7 @@ const (
 	wS_STATUS_LINE
 	wS_HEADERS
 	wS_BODY
+	wS_TRAILERS
 )
 
 type Writer struct {
@@ -159,14 +160,37 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 	return total, nil
 }
 
-
-func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	if w.status != wS_HEADERS {
-		w.WriteHeaders(GetChunkHeaders("text/plain"))
-		w.status = wS_HEADERS
-	}
-
-	n, err := w.connection.Write([]byte("0\r\n\r\n"))
+func (w *Writer) ChunkedBodyDone() {
 	w.status = wS_BODY
-	return n, err
 }
+
+func InitTrailers(h *headers.Headers, trailerNames []string) headers.Headers {
+	trailers := headers.MakeHeadersMap()
+	for _, name := range trailerNames {
+		h.Add("trailers", name)
+		trailers.Set(name, "")
+	}
+	return trailers
+}
+
+func (w *Writer) WriteTrailers(t headers.Headers) error {
+	if w.status != wS_BODY {
+		w.status = wS_BODY
+	}
+	
+	_, err := w.connection.Write([]byte("0\r\n"))
+	if err != nil { return err }
+	for key := range t {
+		_, err := w.connection.Write([]byte(fmt.Sprintf("%v: %v%v", key, t[key], crlf)))
+		if err != nil {
+			return err
+		}
+	}
+	_, err = w.connection.Write([]byte("\r\n"))
+	if err != nil { return err }
+
+	w.status = wS_TRAILERS
+	return nil
+}
+
+

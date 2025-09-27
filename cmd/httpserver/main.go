@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"http-protocol/internal/request"
 	"http-protocol/internal/response"
 	"http-protocol/internal/server"
@@ -82,18 +84,26 @@ func MainHandler(w response.Writer, req *request.Request) {
 		}
 
 		w.WriteStatusLine(response.SC_OK)
-		h := response.GetChunkHeaders("")
-		// h.Set("content-type", r.Header.Get("content-type"))
+		h := response.GetChunkHeaders("text/plain")
+		t := response.InitTrailers(&h, []string{"X-Content-Sha256", "X-Content-Length"})
 		w.WriteHeaders(h)
 		buf := make([]byte, 1024)
+		fullBody := make([]byte, 0, 4096)
+		bodyLength := 0
 		for {
 			n, err := r.Body.Read(buf)
+			fullBody = append(fullBody, buf[:n]...)
+			bodyLength += n
 			w.WriteChunkedBody(buf[:n])
 			if err != nil {
 				break;
 			}
 		}
-		w.WriteChunkedBodyDone()
+		w.ChunkedBodyDone()
+		// w.WriteChunkedBodyDone()
+		t.Set("X-Content-Sha256", fmt.Sprintf("%x", sha256.Sum256(fullBody)))
+		t.Set("X-Content-Length", fmt.Sprint(bodyLength))
+		w.WriteTrailers(t)
 
 	default:
 		w.WriteStatusLine(response.SC_OK)
